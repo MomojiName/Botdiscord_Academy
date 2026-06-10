@@ -1,45 +1,42 @@
 const { GoogleGenAI } = require('@google/genai');
 
 let ai;
+
 function initAI() {
     if (process.env.GEMINI_API_KEY) {
-        ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-        console.log('✅ AI System Initialized');
+        try {
+            ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+            console.log("✅ Google Gemini AI is ready.");
+        } catch (error) {
+            console.error("❌ Failed to initialize Google Gemini AI:", error);
+        }
+    } else {
+        console.warn("⚠️ GEMINI_API_KEY is not set in .env. AI commands will not work.");
     }
 }
 
-async function askGemini(prompt, attachments = []) {
-    if (!ai) return "❌ ระบบ AI ยังไม่ได้ตั้งค่า API Key";
-    
+async function askGemini(prompt) {
+    if (!ai) {
+        return "❌ ระบบ AI ยังไม่ได้ตั้งค่า API Key ครับ โปรดติดต่อแอดมินให้ตั้งค่า `GEMINI_API_KEY` ในไฟล์ .env";
+    }
+
     try {
-        const parts = [];
-        if (prompt) parts.push({ text: prompt });
-        else if (attachments.length > 0) parts.push({ text: "อธิบายรูปภาพเหล่านี้ให้หน่อยครับ" });
-
-        for (const attachment of attachments) {
-            if (attachment.contentType && attachment.contentType.startsWith('image/')) {
-                const res = await fetch(attachment.url);
-                const buffer = await res.arrayBuffer();
-                parts.push({
-                    inlineData: {
-                        data: Buffer.from(buffer).toString('base64'),
-                        mimeType: attachment.contentType
-                    }
-                });
-            }
-        }
-
         const response = await ai.models.generateContent({
-            model: 'gemini-3.5-flash',
-            contents: parts,
+            model: 'gemini-1.5-pro',
+            contents: prompt,
         });
 
-        let text = response.text;
-        if (text && text.length > 1950) text = text.substring(0, 1950) + "...\n\n*(ข้อความถูกตัดออกเนื่องจากยาวเกินไป)*";
-        return text || "✅ ประมวลผลสำเร็จแต่ไม่มีข้อความตอบกลับ";
+        const text = response.text;
+        
+        // ลิมิตความยาวของข้อความ Discord อยู่ที่ 2000 ตัวอักษร
+        if (text.length > 1950) {
+            return text.substring(0, 1950) + "...\n\n*(ข้อความถูกตัดออกเนื่องจากยาวเกินไป)*";
+        }
+        
+        return text;
     } catch (error) {
-        console.error(error);
-        return "❌ ข้อผิดพลาด AI: " + error.message;
+        console.error("Gemini API Error:", error);
+        return "❌ ขออภัยครับ ระบบ AI เกิดข้อผิดพลาด: `" + (error.message || error) + "`";
     }
 }
 

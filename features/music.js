@@ -12,6 +12,71 @@ async function initMusic(client) {
         }).catch(err => console.log("play-dl cookie error:", err));
     }
 
+    client.on('interactionCreate', async (interaction) => {
+        if (!interaction.isCommand() && !interaction.isButton()) return;
+        
+        if (interaction.isCommand()) {
+            if (interaction.commandName === 'play') {
+                await interaction.deferReply();
+                const voiceChannel = interaction.member.voice.channel;
+                if (!voiceChannel) return interaction.editReply('❌ คุณต้องอยู่ในห้องเสียงก่อนครับ!');
+
+                const query = interaction.options.getString('song');
+                if (!query) return interaction.editReply('❌ โปรดระบุชื่อเพลงที่ต้องการเล่นครับ');
+
+                try {
+                    const yt_info = await play.search(query, { limit: 1 });
+                    if (!yt_info || yt_info.length === 0) return interaction.editReply('❌ หาเพลงไม่เจอครับ ลองพิมพ์ชื่อใหม่ดูนะ');
+                    
+                    const song = {
+                        title: yt_info[0].title,
+                        url: yt_info[0].url,
+                        thumbnail: yt_info[0].thumbnails?.[0]?.url,
+                        duration: yt_info[0].durationRaw
+                    };
+
+                    let serverQueue = queue.get(interaction.guild.id);
+
+                    if (!serverQueue) {
+                        const queueConstruct = {
+                            textChannel: interaction.channel,
+                            voiceChannel: voiceChannel,
+                            connection: null,
+                            songs: [],
+                            player: createAudioPlayer(),
+                            playing: true
+                        };
+                        queue.set(interaction.guild.id, queueConstruct);
+                        queueConstruct.songs.push(song);
+
+                        try {
+                            const connection = joinVoiceChannel({
+                                channelId: voiceChannel.id,
+                                guildId: interaction.guild.id,
+                                adapterCreator: interaction.guild.voiceAdapterCreator,
+                            });
+                            queueConstruct.connection = connection;
+                            connection.subscribe(queueConstruct.player);
+
+                            playSong(interaction.guild, queueConstruct.songs[0]);
+                            interaction.editReply(`🎶 กำลังเริ่มเล่น: **${song.title}**`);
+                        } catch (err) {
+                            console.error(err);
+                            queue.delete(interaction.guild.id);
+                            return interaction.editReply('❌ ไม่สามารถเข้าห้องเสียงได้ครับ');
+                        }
+                    } else {
+                        serverQueue.songs.push(song);
+                        return interaction.editReply(`✅ เพิ่มคิวแล้ว: **${song.title}**`);
+                    }
+                } catch (error) {
+                    console.error(error);
+                    return interaction.editReply('❌ เกิดข้อผิดพลาดในการเล่นเพลงครับ (อาจจะติดลิมิตการค้นหา)');
+                }
+            }
+        }
+    });
+
     client.on('messageCreate', async (message) => {
         if (message.author.bot || !message.guild) return;
 
